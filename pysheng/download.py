@@ -20,6 +20,7 @@ import re
 import sys
 import itertools
 import HTMLParser
+import json
 
 try:
     # Python >= 2.6
@@ -96,6 +97,7 @@ def get_info(cover_html):
         "attribution": get_unescape_entities(re.sub("^By\s+", "",
                                                     book_info["attribution"])),
         "max_resolution": (mw, mh),
+        "available_pages_count": len(page_ids)
     }
 
 
@@ -160,11 +162,23 @@ def main(args):
     parser.add_argument('-q', '--quiet', dest='quiet',
                         action="store_true", default=False,
                         help='Do not print messages to the terminal')
+    parser.add_argument('-t', '--total', dest='total',
+                        action="store_true", default=False,
+                        help='Print total number of successfully downloaded pages'
+                        ' at the end. Return a non-zero exit status if no pages'
+                        ' were downloaded successfully.')
+    parser.add_argument('-i', '--info', dest='info',
+                        action="store_true", default=False,
+                        help='Output book info in JSON format to STDOUT. Do not download anything')
     parser.add_argument('url', help='GOOGLE_BOOK_OR_ID')
     args = parser.parse_args(args)
 
     url = args.url
     info = get_info_from_url(url)
+    if args.info:
+        print json.dumps(info, sort_keys=True, indent=4, separators=(',', ': '))
+        return 0
+
     namespace = dict(title=info["title"], attribution=info["attribution"])
     if args.output_directory:
         output_directory = args.output_directory
@@ -172,18 +186,23 @@ def main(args):
         output_directory = "%(attribution)s - %(title)s" % namespace
     lib.mkdir_p(output_directory)
 
+    total = 0
     for page_info, page, image_data in\
             download_book(url, args.page_start - 1, args.page_end):
         filename = "%03d.png" % (page + 1)
         output_path = os.path.join(output_directory, filename)
         if not ((os.path.isfile(output_path) and
                  args.noredownload)):
+            total += 1
             open(output_path, "wb").write(image_data)
             if not args.quiet:
                 print 'Downloaded {}'.format(output_path.encode('utf-8'))
         elif not args.quiet:
             print 'Output file {} exists'.format(output_path.encode('utf-8'))
 
-
+    if args.total:
+      print "Total pages downloaded\n" + str(total)
+      return total == 0
+    return 0
 if __name__ == '__main__':
     sys.exit(main(sys.argv[1:]))
